@@ -1,0 +1,20 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements-test.txt
+      - name: Run tests (SQLite + 가짜 API 응답, 외부 연결 없음)
+        run: PYTHONPATH=src python tests/test_pipeline.py
+      - name: Run bias simulation
+        run: PYTHONPATH=src python analysis/bias_simulation.py

@@ -1,0 +1,66 @@
+# docker compose up -d --build 한 번으로 PostgreSQL + Airflow + 대시보드 실행
+#   Airflow  : http://localhost:8080
+#   대시보드 : http://localhost:8501
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 10
+
+  airflow:
+    build:
+      context: .
+      dockerfile: docker/airflow.Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"   # 로컬 실습용: 로그인 생략
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"      # DAG은 화면에서 직접 켠다
+      APT_DB_URL: postgresql://apt:apt@postgres:5432/apt
+      PYTHONPATH: /opt/airflow/src
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./legacy_data:/opt/airflow/legacy_data:ro
+    ports:
+      - "8080:8080"
+    command: standalone
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/dashboard.Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APT_DB_URL: postgresql://apt:apt@postgres:5432/apt
+      PYTHONPATH: /app/src
+      # WSL에서 윈도우 폴더(/mnt/d)의 파일 변경은 inotify로 감지되지 않아 주기적 확인으로 바꾼다
+      STREAMLIT_SERVER_FILE_WATCHER_TYPE: poll
+      STREAMLIT_SERVER_RUN_ON_SAVE: "true"
+    volumes:
+      - ./src:/app/src
+      - ./dashboard:/app/dashboard
+    ports:
+      - "8501:8501"
+
+volumes:
+  pgdata:

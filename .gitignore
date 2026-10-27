@@ -1,0 +1,6 @@
+.env
+legacy_data/*
+!legacy_data/.gitkeep
+*.db
+__pycache__/
+logs/
