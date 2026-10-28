@@ -44,6 +44,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -100,6 +101,7 @@ a { color: var(--body); text-underline-offset: 3px; }
 .dist { margin: 26px 0 0; }
 .dist svg { display: block; width: 100%; overflow: visible; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+.note { margin-top: 10px; font-size: 14px; color: var(--ink-2); max-width: 70ch; }
 .legend span::before {
   content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px;
   margin-right: 7px; vertical-align: -1px; background: var(--c);
@@ -189,9 +191,12 @@ svg text { font-family: inherit; }
 
     <figure class="dist" style="margin-left:0;margin-right:0">
       <svg id="dist" role="img" aria-label="평당가격 분포 피팅 곡선"></svg>
-      <figcaption class="legend">
+      <figcaption class="legend" id="legend-fit">
         <span style="--c: var(--body)">하위 95%: log-normal (최대우도)</span>
         <span style="--c: var(--tail)">상위 5%: power-law (히스토그램 최소제곱)</span>
+      </figcaption>
+      <figcaption class="note" id="legend-hist" hidden>
+        막대는 그 가격대에 있는 단지 수예요. 자치구는 한 달 거래 단지가 수십 곳이라 분포를 피팅하지 않고 원자료만 보여줘요.
       </figcaption>
     </figure>
 
@@ -234,7 +239,8 @@ svg text { font-family: inherit; }
 const $ = s => document.querySelector(s);
 const NS = "http://www.w3.org/2000/svg";
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const state = { region: "서울", trend: [], months: [], ym: null, fit: null, range: "recent", axis: null, shown: null };
+const state = { region: "서울", trend: [], months: [], ym: null, fit: null, cx: null, range: "recent", axis: null, shown: null };
+const isSeoul = () => state.region === "서울";
 
 /* ---------- 형식 ---------- */
 const ymLabel = ym => `${ym.slice(0, 4)}년 ${+ym.slice(5)}월`;
@@ -311,7 +317,138 @@ function showTip(evt, html) {
 }
 const hideTip = () => { tip.hidden = true; };
 
-/* ---------- 분포 곡선 ---------- */
+/* ---------- 공용: x축, 기준선 라벨 ---------- */
+function drawAxisX(svg, X, xMax, W, H, m, ih) {
+  const axis = el("g", { class: "axis" });
+  for (const t of niceTicks(0, xMax, W < 560 ? 4 : 6)) {
+    axis.append(el("text", { x: X(t), y: H - 8, "text-anchor": t === 0 ? "start" : t >= xMax ? "end" : "middle" }, wonTick(t)));
+  }
+  svg.append(axis, el("line", { class: "baseline", x1: m.l, x2: W - m.r, y1: m.t + ih, y2: m.t + ih }));
+}
+// 라벨이 겹치면 아래 줄로 내린다 (좁은 화면 대비). 필요한 줄 수를 돌려준다
+function layoutMarks(marks, X, W) {
+  const used = [];
+  for (const mk of marks) {
+    mk.x = X(mk.v);
+    const w = Math.max(textWidth(mk.name, 13), textWidth(mk.value, 15, 600));
+    if (mk.side === "end" && mk.x - w - 8 < 0) mk.side = "start";
+    if (mk.side === "start" && mk.x + w + 8 > W) mk.side = "end";
+    const x0 = mk.side === "end" ? mk.x - 8 - w : mk.x + 8, x1 = x0 + w;
+    mk.row = 0;
+    while ((used[mk.row] || []).some(([a, b]) => x0 < b + 12 && x1 > a - 12)) mk.row++;
+    (used[mk.row] ||= []).push([x0, x1]);
+  }
+  return Math.max(1, used.length);
+}
+function drawMarks(svg, marks, m, ih) {
+  for (const mk of marks) {
+    svg.append(el("line", { x1: mk.x, x2: mk.x, y1: 10 + 40 * mk.row, y2: m.t + ih, stroke: mk.color, "stroke-width": 1.5, ...(mk.dash ? { "stroke-dasharray": mk.dash } : {}) }));
+  }
+  for (const mk of marks) {
+    const tx = mk.side === "end" ? mk.x - 8 : mk.x + 8, top = 10 + 40 * mk.row;
+    svg.append(el("text", { class: "halo", x: tx, y: top + 12, "text-anchor": mk.side, fill: "var(--ink-3)", "font-size": 13 }, mk.name),
+               el("text", { class: "halo", x: tx, y: top + 31, "text-anchor": mk.side, fill: "var(--ink)", "font-size": 15, "font-weight": 600 }, mk.value));
+  }
+}
+// numpy 기본(선형 보간)과 같은 백분위수
+function quantile(sorted, q) {
+  if (!sorted.length) return null;
+  const h = (sorted.length - 1) * q, lo = Math.floor(h);
+  return sorted[lo] + (h - lo) * ((sorted[lo + 1] ?? sorted[lo]) - sorted[lo]);
+}
+
+/* ---------- 자치구: 피팅 없이 히스토그램 ---------- */
+function drawHist(cx) {
+  const svg = $("#dist");
+  const W = svg.parentNode.clientWidth, H = W < 560 ? 220 : 280;
+  const m = { l: 30, r: 2, t: 48, b: 30 }, iw = W - m.l - m.r;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H);
+  svg.replaceChildren();
+  const xs = cx.map(c => c.price_per_pyeong).sort((a, b) => a - b);
+  const top = xs.length ? xs[xs.length - 1] : 0;
+  const xMax = Math.max(state.axis.xMax, Math.ceil(top * 1.05 / 5000) * 5000);
+  const X = v => m.l + Math.min(v, xMax) / xMax * iw;
+  if (!xs.length) {
+    drawAxisX(svg, X, xMax, W, H, m, H - m.t - m.b);
+    svg.append(el("text", { x: W / 2, y: H / 2, "text-anchor": "middle", fill: "var(--ink-3)", "font-size": 15 }, "이 달은 거래된 단지가 없어요"));
+    return;
+  }
+  const med = quantile(xs, 0.5), p95 = quantile(xs, 0.95);
+  const marks = [
+    { v: med, name: "중앙값", value: won(med), color: "var(--ink-2)", dash: "4 4", side: "end" },
+    { v: p95, name: "상위 5% 경계", value: won(p95), color: "var(--tail)", dash: null, side: "start" },
+  ];
+  m.t = 10 + 40 * layoutMarks(marks, X, W);
+  const ih = H - m.t - m.b;
+
+  // 같은 지역 안에서는 구간 폭을 고정해 달끼리 비교할 수 있게
+  const width = [100, 200, 250, 500, 1000, 2000, 2500, 5000].find(w => w >= xMax / 24) || 5000;
+  const bins = [];
+  for (const c of cx) {
+    const i = Math.floor(c.price_per_pyeong / width);
+    (bins[i] ||= []).push(c);
+  }
+  const maxCount = Math.max(...bins.filter(Boolean).map(b => b.length));
+  const yTop = Math.max(2, maxCount) * 1.1;
+  const Y = v => m.t + ih - v / yTop * ih;
+
+  const grid = el("g", { class: "grid" }), axisY = el("g", { class: "axis" });
+  for (const t of niceTicks(0, yTop, 3).filter(t => Number.isInteger(t) && t > 0)) {
+    grid.append(el("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t) }));
+    axisY.append(el("text", { x: m.l - 8, y: Y(t) + 4, "text-anchor": "end" }, t));
+  }
+  axisY.append(el("text", { x: m.l - 8, y: Y(0) + 4, "text-anchor": "end" }, 0));
+  svg.append(grid, axisY);
+  drawAxisX(svg, X, xMax, W, H, m, ih);
+
+  const gap = 2;
+  bins.forEach((b, i) => {
+    if (!b) return;
+    const x0 = X(i * width) + gap / 2, x1 = X((i + 1) * width) - gap / 2, y = Y(b.length), base = Y(0);
+    const w = Math.max(1, x1 - x0), r = Math.min(3, w / 2, base - y);
+    const d = `M${x0},${base}V${y + r}Q${x0},${y} ${x0 + r},${y}H${x0 + w - r}Q${x0 + w},${y} ${x0 + w},${y + r}V${base}Z`;
+    const bar = el("path", { d, fill: "var(--body)" });
+    svg.append(bar);
+    // 막대보다 넓은 투명 영역으로 마우스 대상 크게
+    const hit = el("rect", { x: X(i * width), y: m.t, width: X((i + 1) * width) - X(i * width), height: ih, fill: "transparent" });
+    svg.append(hit);
+    const names = b.slice().sort((p, q) => q.price_per_pyeong - p.price_per_pyeong).map(c => `${c.umd_nm} ${c.apt_nm}`);
+    const list = names.slice(0, 4).join("<br>") + (names.length > 4 ? `<br>외 ${names.length - 4}곳` : "");
+    hit.addEventListener("pointermove", e => showTip(e, `${won(i * width)}~${won((i + 1) * width)}<br>단지 <b>${b.length}곳</b><br>${list}`));
+    hit.addEventListener("pointerleave", hideTip);
+  });
+  drawMarks(svg, marks, m, ih);
+}
+
+function renderGu(f, cx) {
+  const xs = cx.map(c => c.price_per_pyeong).sort((a, b) => a - b);
+  const med = quantile(xs, 0.5), p95 = quantile(xs, 0.95);
+  $("#summary").innerHTML = xs.length
+    ? `단지 <b>${xs.length}곳</b> 중 절반은 평당 <b>${won(med)}</b> 아래이고, 상위 5%는 <b>${won(p95)}</b>부터예요. ` +
+      `가장 비싼 곳은 <b>${cx[cx.length - 1].umd_nm} ${cx[cx.length - 1].apt_nm}</b>(${won(xs[xs.length - 1])})이에요.`
+    : "이 달은 거래된 단지가 없어요. 다른 달을 골라 보세요.";
+  const prev = state.trend.find(r => r.ym === shiftYm(f.ym, -12));
+  let giniDelta = "";
+  if (f.gini != null) {
+    if (!prev || prev.gini == null) giniDelta = "1년 전 자료 없음";
+    else { const d = f.gini - prev.gini; giniDelta = Math.abs(d) < 0.0005 ? `1년 전과 같음 (${prev.gini.toFixed(3)})` : `1년 전 ${prev.gini.toFixed(3)}보다 ${Math.abs(d).toFixed(3)} ${d > 0 ? "높음" : "낮음"}`; }
+  }
+  const items = [
+    { name: "거래된 단지", v: `${xs.length.toLocaleString()}곳`, d: "", p: "그달 거래된 단지마다 평균 평당가격을 하나씩 썼어요." },
+    { name: "중앙값", v: xs.length ? won(med) : null, d: "", p: "단지를 가격순으로 줄 세웠을 때 가운데 단지의 평당가격이에요." },
+    { name: "상위 5% 경계", v: xs.length ? won(p95) : null, d: "", p: "이 가격 이상인 단지가 상위 5%예요." },
+    { name: "지니계수", v: f.gini?.toFixed(3), d: giniDelta, p: f.gini == null ? "단지가 30곳 미만인 달은 계산하지 않았어요." : "0이면 모든 단지 가격이 같고, 1에 가까울수록 불평등해요." },
+  ];
+  $("#metrics").replaceChildren(...items.map(it => {
+    const div = document.createElement("div"); div.className = "metric";
+    div.innerHTML = `<h3>${it.name}</h3><div class="v">${it.v ?? "–"}</div><div class="d">${it.d}</div><p>${it.p}</p>`;
+    return div;
+  }));
+  renderCall(`/complexes/${state.region}/${f.ym}`, cx);
+  drawHist(cx);
+}
+
+/* ---------- 분포 곡선 (서울 전체) ---------- */
 function drawDist(p) {
   const svg = $("#dist");
   const W = svg.parentNode.clientWidth, H = W < 560 ? 220 : 280;
@@ -327,18 +464,8 @@ function drawDist(p) {
     { v: md.median, name: "대표 평당가격", value: `약 ${won(md.median)}`, color: "var(--ink-2)", dash: "4 4", side: "end" },
     { v: md.xm, name: "상위 5% 시작", value: won(md.xm), color: "var(--tail)", dash: null, side: "start" },
   ] : [];
-  const used = [];
-  for (const mk of marks) {
-    mk.x = X(mk.v);
-    const w = Math.max(textWidth(mk.name, 13), textWidth(mk.value, 15, 600));
-    if (mk.side === "end" && mk.x - w - 8 < 0) mk.side = "start";
-    if (mk.side === "start" && mk.x + w + 8 > W) mk.side = "end";
-    const x0 = mk.side === "end" ? mk.x - 8 - w : mk.x + 8, x1 = x0 + w;
-    mk.row = 0;
-    while ((used[mk.row] || []).some(([a, b]) => x0 < b + 12 && x1 > a - 12)) mk.row++;
-    (used[mk.row] ||= []).push([x0, x1]);
-  }
-  m.t = 10 + 40 * Math.max(1, used.length);
+  const nRows = layoutMarks(marks, X, W);
+  m.t = 10 + 40 * nRows;
   const ih = H - m.t - m.b;
   let yMax = 1e-4;
   if (md) {
@@ -346,12 +473,7 @@ function drawDist(p) {
     yMax = Math.max(yMax, md.tail(md.xm)) / 0.88;
   }
   const Y = v => m.t + ih - Math.min(v, yMax) / yMax * ih;
-
-  const axis = el("g", { class: "axis" });
-  for (const t of niceTicks(0, xMax, W < 560 ? 4 : 6)) {
-    axis.append(el("text", { x: X(t), y: H - 8, "text-anchor": t === 0 ? "start" : t >= xMax ? "end" : "middle" }, wonTick(t)));
-  }
-  svg.append(axis, el("line", { class: "baseline", x1: m.l, x2: W - m.r, y1: m.t + ih, y2: m.t + ih }));
+  drawAxisX(svg, X, xMax, W, H, m, ih);
 
   if (!md) {
     svg.append(el("text", { x: W / 2, y: m.t + ih / 2, "text-anchor": "middle", fill: "var(--ink-3)", "font-size": 15 },
@@ -379,15 +501,7 @@ function drawDist(p) {
       svg.append(el("text", { x: X(md.xm) + 8, y: m.t + ih - 10, fill: "var(--ink-3)", "font-size": 13 }, msg));
   }
 
-  // 기준선 두 개: 대표 평당가격, 상위 5% 시작 (선을 먼저, 라벨은 위에)
-  for (const mk of marks) {
-    svg.append(el("line", { x1: mk.x, x2: mk.x, y1: 10 + 40 * mk.row, y2: m.t + ih, stroke: mk.color, "stroke-width": 1.5, ...(mk.dash ? { "stroke-dasharray": mk.dash } : {}) }));
-  }
-  for (const mk of marks) {
-    const tx = mk.side === "end" ? mk.x - 8 : mk.x + 8, top = 10 + 40 * mk.row;
-    svg.append(el("text", { class: "halo", x: tx, y: top + 12, "text-anchor": mk.side, fill: "var(--ink-3)", "font-size": 13 }, mk.name),
-               el("text", { class: "halo", x: tx, y: top + 31, "text-anchor": mk.side, fill: "var(--ink)", "font-size": 15, "font-weight": 600 }, mk.value));
-  }
+  drawMarks(svg, marks, m, ih);
 
   // 마우스를 올리면 그 가격보다 비싼 단지 비율
   const cross = el("line", { y1: m.t, y2: m.t + ih, stroke: "var(--ink-3)", "stroke-width": 1, visibility: "hidden" });
@@ -460,11 +574,10 @@ function renderMetrics(f) {
     return div;
   }));
 }
-function renderCall(f) {
-  const path = `/fit/${encodeURIComponent(state.region)}/${f.ym}`;
-  $("#call-url").textContent = `GET /fit/${state.region}/${f.ym}`;
-  $("#call-open").href = path;
-  $("#call-json").textContent = JSON.stringify(f, null, 2);
+function renderCall(path, data) {
+  $("#call-url").textContent = `GET ${path}`;
+  $("#call-open").href = path.split("/").map(encodeURIComponent).join("/");
+  $("#call-json").textContent = JSON.stringify(data, null, 2);
 }
 
 /* ---------- 월별 추이 (지표마다 따로, 축 하나씩) ---------- */
@@ -473,13 +586,18 @@ const SERIES = [
   { key: "gini", name: "지니계수", fmt: v => v.toFixed(3) },
   { key: "alpha", name: "꼬리 지수 α", fmt: v => v.toFixed(2) },
 ];
+const SERIES_GU = [
+  { key: "gini", name: "지니계수", fmt: v => v.toFixed(3) },
+  { key: "n", name: "거래된 단지 수", fmt: v => `${v.toLocaleString()}곳` },
+];
 function drawMultiples() {
   const host = $("#multiples");
   host.replaceChildren();
   const rows = state.range === "recent" ? state.trend.filter(r => r.ym >= "2024-01") : state.trend;
   if (!rows.length) return;
   const i0 = ymIndex(rows[0].ym), i1 = ymIndex(rows[rows.length - 1].ym);
-  for (const s of SERIES) {
+  host.style.gridTemplateColumns = isSeoul() ? "" : (innerWidth > 760 ? "repeat(2, 1fr)" : "");
+  for (const s of (isSeoul() ? SERIES : SERIES_GU)) {
     const fig = document.createElement("figure"); fig.style.margin = 0;
     fig.innerHTML = `<h3>${s.name}</h3>`;
     const svg = el("svg", { role: "img", "aria-label": `${s.name} 월별 추이` });
@@ -606,10 +724,18 @@ async function selectMonth(ym) {
   history.replaceState(null, "", `?region=${encodeURIComponent(state.region)}&ym=${ym}`);
   try {
     const f = await api(`/fit/${encodeURIComponent(state.region)}/${ym}`);
+    let cx = null;
+    if (!isSeoul()) cx = await api(`/complexes/${encodeURIComponent(state.region)}/${ym}`).catch(() => []);
     if (state.ym !== ym) return;  // 그사이 다른 달을 골랐으면 버린다
     state.fit = f;
-    renderSummary(f); renderMetrics(f); renderCall(f);
-    animateDist(state.shown, f);
+    state.cx = cx;
+    $("#legend-fit").hidden = !isSeoul(); $("#legend-hist").hidden = isSeoul();
+    if (isSeoul()) {
+      renderSummary(f); renderMetrics(f); renderCall(`/fit/${state.region}/${ym}`, f);
+      animateDist(state.shown, f);
+    } else {
+      renderGu(f, cx);
+    }
     drawMultiples();
   } catch (err) { showError(err); }
 }
@@ -644,7 +770,7 @@ async function init() {
     drawMultiples();
   }));
   let t;
-  addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => { if (state.fit) { drawDist(state.fit); drawMultiples(); } }, 120); });
+  addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => { if (state.fit) { isSeoul() ? drawDist(state.fit) : drawHist(state.cx || []); drawMultiples(); } }, 120); });
   document.fonts?.ready.then(() => { fitSelect($("#region")); fitSelect($("#month")); });
   const want = q.get("region");
   await selectRegion([...sel.options].some(o => o.value === want) ? want : "서울", q.get("ym"));

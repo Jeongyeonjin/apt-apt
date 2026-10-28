@@ -130,11 +130,61 @@ f = fits[fits["region"] == region].copy()
 months = f["ym"].tolist()
 ym = c2.selectbox("분포를 볼 월", months[::-1])
 c3.caption(f"마지막 수집: {last_collect() or '-'}  ·  분석 단위: 단지별 월평균 평당가격  ·  "
-           f"거래 단지가 {config.MIN_SAMPLE}개 미만인 달은 피팅하지 않음")
+           f"분포 피팅은 서울 전체만 (거래 단지 {config.MIN_SAMPLE}개 이상인 달), 자치구는 히스토그램만")
 
-# ---------------- 핵심 지표 ----------------
 cur = f[f["ym"] == ym].iloc[0]
 fmt = lambda v, p: f"{v:.{p}f}" if pd.notna(v) else "-"
+d = load_month(ym)
+
+
+# ---------------- 자치구: 피팅 없이 히스토그램만 ----------------
+def nice_width(span, target=15):
+    raw = span / target
+    return next((w for w in (100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000) if w >= raw), 10000)
+
+
+if region != config.SEOUL:
+    d = d[d["sgg_cd"] == region].sort_values("price_per_pyeong")
+    x = d["price_per_pyeong"].to_numpy()
+    st.caption("자치구는 한 달 거래 단지가 수십 곳이라 분포 모양을 판단하기엔 표본이 적어서 피팅하지 않고, "
+               "단지별 평균 평당가격의 히스토그램만 보여줍니다.")
+    k = st.columns(4)
+    k[0].metric("거래된 단지 수", f"{len(x):,}")
+    k[1].metric("중앙값", f"{np.median(x):,.0f}만원/평" if len(x) else "-")
+    k[2].metric("상위 5% 경계", f"{np.percentile(x, config.TAIL_PCT):,.0f}만원/평" if len(x) else "-")
+    k[3].metric("지니계수", fmt(cur["gini"], 3))
+    if len(x):
+        w = nice_width(x.max() - x.min())
+        edges = np.arange(np.floor(x.min() / w) * w, x.max() + w, w)
+        cnt, _ = np.histogram(x, edges)
+        fig = go.Figure()
+        fig.add_bar(x=(edges[:-1] + edges[1:]) / 2, y=cnt, width=w * 0.92, marker_color=C_PL,
+                    customdata=np.c_[edges[:-1], edges[1:]],
+                    hovertemplate="%{customdata[0]:,.0f}~%{customdata[1]:,.0f}만원/평<br>단지 %{y}곳<extra></extra>")
+        fig.add_vline(x=np.percentile(x, config.TAIL_PCT), line=dict(color=C_LN, width=2, dash="dot"),
+                      annotation_text="상위 5% 경계", annotation_position="top")
+        fig.update_layout(title=dict(text=f"{ym} {names[region]} 단지별 평균 평당가격 ({len(x)}개 단지)", x=0.5, xanchor="center"),
+                          height=420, margin=dict(l=10, r=10, t=60, b=10), bargap=0, showlegend=False)
+        fig.update_xaxes(title="P (평당가격, 만원/평)", separatethousands=True, showgrid=False)
+        fig.update_yaxes(title="단지 수", dtick=1 if cnt.max() <= 10 else None)
+        st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+        with st.expander("단지 목록 (싼 순)"):
+            st.dataframe(d.rename(columns={"umd_nm": "법정동", "apt_nm": "단지", "price_per_pyeong": "평균 평당가격(만원)",
+                                           "n_deals": "거래 건수"}).drop(columns=["sgg_cd"]).round(0),
+                         use_container_width=True, hide_index=True)
+    ft = full_months(f)
+    a1, a2 = st.columns(2)
+    fig = line_fig("지니계수 추이", "Gini")
+    fig.add_scatter(x=ft["ym"], y=ft["gini"], mode="lines+markers", line=dict(color=C_PL, width=2),
+                    marker=dict(size=7), showlegend=False)
+    a1.plotly_chart(fig, use_container_width=True, theme="streamlit")
+    fig = line_fig("거래된 단지 수 추이", "단지 수")
+    fig.add_scatter(x=ft["ym"], y=ft["n"], mode="lines+markers", line=dict(color=C_LN, width=2),
+                    marker=dict(size=7), showlegend=False)
+    a2.plotly_chart(fig, use_container_width=True, theme="streamlit")
+    st.stop()
+
+# ---------------- 핵심 지표 (서울 전체) ----------------
 k = st.columns(6)
 k[0].metric("거래된 단지 수", f"{int(cur['n']):,}")
 k[1].metric("꼬리 경계 (상위 5%)", f"{cur['pl_xmin']:,.0f}만원/평" if pd.notna(cur["pl_xmin"]) else "-")
@@ -147,9 +197,6 @@ if pd.notna(cur["lr_r"]):
                 delta_color="off")
 
 # ---------------- 1. 몸통 / 꼬리 분포 ----------------
-d = load_month(ym)
-if region != config.SEOUL:
-    d = d[d["sgg_cd"] == region]
 x = d["price_per_pyeong"].to_numpy()
 p1, p2 = st.columns(2)
 

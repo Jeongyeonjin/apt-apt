@@ -156,6 +156,8 @@ def test_end_to_end_collect_check_fit():
     assert out["n"] == 3000 and out["ln_sigma"] > 0.3          # 단지명이 모두 달라 단지 3000개
     fits = db.query("SELECT region FROM fit_params WHERE ym = ?", ("2025-01",))
     assert len(fits) == 26                                  # 서울 전체 + 25개 구
+    gu = db.query("SELECT * FROM fit_params WHERE ym = ? AND region = ?", ("2025-01", "11680")).iloc[0]
+    assert gu["n"] == 120 and gu["gini"] > 0 and gu["ln_sigma"] is None   # 구는 피팅하지 않음
 
 
 def test_quality_check_fails_on_empty_month():

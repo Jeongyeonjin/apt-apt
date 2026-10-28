@@ -33,15 +33,15 @@ class Fit(BaseModel):
     region: str = Field(description="지역 이름")
     region_code: str = Field(description="법정동 코드 5자리")
     n: int | None = Field(description="분석한 단지 수 (단지별 월평균 평당가격 사용)")
-    median_price: int | None = Field(description="대표 평당가격, 만원 (하위 95% log-normal의 중앙값 exp(μ))")
+    median_price: int | None = Field(description="대표 평당가격, 만원 (하위 95% log-normal의 중앙값 exp(μ)) [서울 전체만]")
     tail_start: float | None = Field(description="상위 5%가 시작되는 평당가격, 만원")
-    sigma: float | None = Field(description="가격 퍼짐: 하위 95% log-normal의 σ. 클수록 단지 간 가격 차이가 큼")
-    mu: float | None = Field(description="하위 95% log-normal의 μ")
+    sigma: float | None = Field(description="가격 퍼짐: 하위 95% log-normal의 σ. 클수록 단지 간 가격 차이가 큼 [서울 전체만]")
+    mu: float | None = Field(description="하위 95% log-normal의 μ [서울 전체만]")
     gini: float | None = Field(description="지니계수. 0이면 모든 단지 가격이 같고 1에 가까울수록 불평등")
-    alpha: float | None = Field(description="꼬리 지수: 상위 5% power-law 기울기(히스토그램 OLS). 작을수록 초고가 단지가 많음")
-    alpha_mle: float | None = Field(description="같은 꼬리의 MLE 지수 (비교용)")
-    lr_r: float | None = Field(description="꼬리 비교 로그우도비. 양수면 power-law, 음수면 log-normal 쪽")
-    lr_p: float | None = Field(description="로그우도비 검정 p값")
+    alpha: float | None = Field(description="꼬리 지수: 상위 5% power-law 기울기(히스토그램 OLS). 작을수록 초고가 단지가 많음 [서울 전체만]")
+    alpha_mle: float | None = Field(description="같은 꼬리의 MLE 지수 (비교용) [서울 전체만]")
+    lr_r: float | None = Field(description="꼬리 비교 로그우도비. 양수면 power-law, 음수면 log-normal 쪽 [서울 전체만]")
+    lr_p: float | None = Field(description="로그우도비 검정 p값 [서울 전체만]")
 
 
 def _call(fn, *args, **kw):
@@ -84,7 +84,8 @@ def latest():
 
 @app.get("/fit/{region}/{ym}", summary="지역·월별 분포 지표", response_model=Fit)
 def fit(region: Region, ym: str = YM):
-    """그달 단지가 30곳 미만이면 분포 지표는 null, 상위 5% 단지가 30곳 미만이면 꼬리 지수(alpha)는 null로 나옵니다."""
+    """분포 피팅은 서울 전체만 합니다. 자치구는 n, gini, tail_start(상위 5% 경계)만 값이 있고 피팅 값은 null이며,
+    분포는 /complexes 원자료로 히스토그램을 그려 봅니다. 서울 전체도 단지가 30곳 미만인 달은 피팅하지 않습니다."""
     return _call(service.fit, region.value, ym)
 
 

@@ -11,6 +11,9 @@
     * pl_alpha  (비교용): 최대우도추정(MLE). OLS의 편향을 확인하는 용도
 - 꼬리 비교 검정: 꼬리에서 power-law vs 잘린 log-normal 로그우도비 R, Vuong p값
 - 지니계수 (전체)
+
+피팅은 서울 전체만 한다. 자치구는 한 달 거래 단지가 수십 곳이라 분포 모양을 판단하기엔 표본이 적어서,
+단지 수·지니계수·상위 5% 경계만 저장하고 대시보드에서는 히스토그램만 보여준다.
 """
 import warnings
 from datetime import datetime, timezone
@@ -159,14 +162,24 @@ def fit_sample(x):
     return row
 
 
+def describe_sample(x):
+    """자치구용: 피팅 없이 단지 수, 지니계수, 상위 5% 경계만."""
+    x = np.asarray(x, float)
+    x = x[np.isfinite(x) & (x > 0)]
+    row = dict(n=int(len(x)))
+    if len(x) >= config.MIN_SAMPLE:
+        row["gini"] = gini(x)
+        row["pl_xmin"] = tail_threshold(x)
+    return row
+
+
 def fit_month(db, ym):
-    """한 달치 단지 평균을 서울 전체 + 자치구별로 피팅해 fit_params에 저장. n = 단지 수."""
+    """한 달치 단지 평균으로 서울 전체는 피팅, 자치구는 기술통계만 계산해 fit_params에 저장. n = 단지 수."""
     df = db.month_complexes(ym)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    groups = [(config.SEOUL, df)] + [(g, d) for g, d in df.groupby("sgg_cd")]
-    rows = []
-    for region, d in groups:
-        row = fit_sample(d["price_per_pyeong"].to_numpy())
+    rows = [dict(fit_sample(df["price_per_pyeong"].to_numpy()), ym=ym, region=config.SEOUL, updated_at=now)]
+    for region, d in df.groupby("sgg_cd"):
+        row = describe_sample(d["price_per_pyeong"].to_numpy())
         rows.append(dict(row, ym=ym, region=str(region), updated_at=now))
     db.upsert_fits(rows)
     return rows
