@@ -1,0 +1,51 @@
+"""서울 아파트 분포 지표 API.
+
+실행: uvicorn main:app --host 0.0.0.0 --port 8000  (Docker Compose의 api 서비스)
+문서: http://localhost:8000/docs
+"""
+from fastapi import FastAPI, HTTPException, Query
+
+from apt_pipeline import service
+from apt_pipeline.db import Database
+
+app = FastAPI(
+    title="서울 아파트 평당가격 분포 API",
+    description="단지별 월평균 평당가격 분포의 피팅 결과(몸통 Log-normal, 꼬리 Power-law, 지니계수)를 조회합니다.",
+    version="1.0.0",
+)
+db = Database()
+
+
+def _call(fn, *args, **kw):
+    try:
+        return fn(*args, db=db, **kw)
+    except service.NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/health", summary="서버 상태")
+def health():
+    return {"status": "ok"}
+
+
+@app.get("/regions", summary="조회 가능한 지역 목록")
+def regions():
+    return service.regions()
+
+
+@app.get("/latest", summary="서울 전체 최신 월 지표")
+def latest():
+    return _call(service.latest)
+
+
+@app.get("/fit/{region}/{ym}", summary="지역·월별 분포 지표")
+def fit(region: str, ym: str):
+    """region: '서울', '강남구' 또는 법정동 코드 5자리 / ym: 'YYYY-MM'"""
+    return _call(service.fit, region, ym)
+
+
+@app.get("/trend/{region}", summary="지역별 월별 지표 추이")
+def trend(region: str,
+          start: str | None = Query(None, description="시작 월 YYYY-MM"),
+          end: str | None = Query(None, description="끝 월 YYYY-MM")):
+    return _call(service.trend, region, start=start, end=end)

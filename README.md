@@ -5,7 +5,7 @@
 공공데이터포털 실거래가 API를 **Airflow로 매일 자동 수집**하고, 서울 아파트 **단지별 평당가격 분포**를
 몸통(log-normal)과 꼬리(power-law)로 나눠 월마다 피팅한 뒤 **Streamlit 대시보드**로 보여주는 파이프라인.
 
-`Python` `Airflow 3` `PostgreSQL` `Docker Compose` `Streamlit` `Plotly` `SciPy`
+`Python` `Airflow 3` `PostgreSQL` `FastAPI` `Docker Compose` `Streamlit` `Plotly` `SciPy`
 
 ![분포 피팅 대시보드](docs/dashboard_fit.jpg)
 
@@ -35,6 +35,7 @@ flowchart LR
     Q -->|통과| F[월별 분포 피팅]
     F --> P[(PostgreSQL<br/>fit_params)]
     P --> S[Streamlit 대시보드]
+    P --> A[FastAPI<br/>지표 API]
     D --> S
 ```
 
@@ -44,6 +45,24 @@ flowchart LR
 | `apt_backfill_monthly` | 월 단위 catchup | 2024-01 ~ 2026-08을 한 달씩 순서대로 수집·피팅 |
 | `apt_load_legacy` | 수동 1회 | 기존 CSV 적재 → 월별 피팅 |
 | `apt_refit_all` | 수동 | 피팅 방법을 바꿨을 때 전체 월 재계산 |
+
+## API (FastAPI)
+
+피팅 결과를 다른 서비스에서 가져다 쓸 수 있도록 REST API로 제공한다. 실행 후 http://localhost:8000/docs 에서 바로 호출해볼 수 있다.
+
+| 엔드포인트 | 설명 |
+|---|---|
+| `GET /latest` | 서울 전체 최신 월 지표 |
+| `GET /fit/{region}/{ym}` | 지역·월별 지표 (`region`: `서울`, `강남구` 또는 코드 `11680`) |
+| `GET /trend/{region}?start=YYYY-MM&end=YYYY-MM` | 월별 지표 추이 |
+| `GET /regions` | 조회 가능한 지역 목록 |
+| `GET /health` | 서버 상태 |
+
+```json
+GET /fit/서울/2026-10
+{"ym": "2026-10", "region": "서울 전체", "n": 990, "sigma": 0.4519, "alpha": 3.262, "gini": 0.2858, ...}
+```
+조회 로직은 `src/apt_pipeline/service.py`에 두고 API는 얇게 감싸기만 해서, FastAPI 없이도 테스트한다.
 
 ## 데이터
 
@@ -113,7 +132,7 @@ Docker Desktop 또는 WSL Ubuntu의 Docker Engine에서 실행한다.
 2. `.env.example`을 `.env`로 복사하고 키 입력 (`.env`는 Git에 올라가지 않음)
 3. (선택) 기존 CSV를 `legacy_data/`에 넣기
 4. `docker compose up -d --build`
-5. http://localhost:8080 (Airflow)에서 DAG 켜기 → http://localhost:8501 (대시보드)
+5. http://localhost:8080 (Airflow)에서 DAG 켜기 → http://localhost:8501 (대시보드), http://localhost:8000/docs (API)
 
 API 연결만 먼저 확인하려면: `docker compose run --rm airflow python -m apt_pipeline.check_api`
 
@@ -121,7 +140,7 @@ API 연결만 먼저 확인하려면: `docker compose run --rm airflow python -m
 
 ```bash
 pip install -r requirements-test.txt
-PYTHONPATH=src python tests/test_pipeline.py      # 14개, 외부 연결 없이 SQLite + 가짜 API 응답
+PYTHONPATH=src python tests/test_pipeline.py      # 15개, 외부 연결 없이 SQLite + 가짜 API 응답
 PYTHONPATH=src python analysis/bias_simulation.py # 위 검증 표 재현
 ```
 API 응답 파싱, 해제·지연신고 upsert, 단지 평균 집계, 피팅 정확도, 기존 CSV 변환, 수집 → 점검 → 피팅 전체 흐름을
@@ -137,9 +156,11 @@ src/apt_pipeline/
   db.py                 테이블 정의, upsert, 단지 평균 집계 (PostgreSQL/SQLite 공용)
   fitting.py            잘린 log-normal MLE, power-law OLS·MLE, 비교 검정, 지니
   jobs.py               수집 · 품질 점검 · 피팅 작업 단위
+  service.py            API용 조회 함수
   legacy_loader.py      기존 CSV 변환 · 적재
   config.py             꼬리 비율, 구간 수 등 설정
 dashboard/app.py        Streamlit 대시보드
+api/main.py             FastAPI 지표 API
 analysis/               검증용 시뮬레이션
 tests/                  테스트
 docs/                   README 이미지

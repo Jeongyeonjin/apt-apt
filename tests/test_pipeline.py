@@ -187,6 +187,25 @@ def test_complex_average_is_unit():
     assert c.loc[c.apt_nm == "일괄단지", "n_deals"].item() == 30
 
 
+def test_service_queries():
+    from apt_pipeline import service
+    db = temp_db()
+    db.upsert_fits([dict(ym=ym, region=r, n=100, gini=0.3, ln_mu=8.0, ln_sigma=0.45,
+                         ols_alpha=3.2, pl_alpha=float("nan"), updated_at="t")
+                    for ym in ("2026-09", "2026-10") for r in ("11000", "11680")])
+    out = service.fit("강남구", "2026-10", db=db)
+    assert out["region_code"] == "11680" and out["sigma"] == 0.45 and out["alpha_mle"] is None
+    assert service.fit("11000", "2026-09", db=db)["region"] == "서울 전체"
+    assert len(service.trend("서울", start="2026-10", db=db)) == 1
+    assert service.latest(db=db)["ym"] == "2026-10"
+    try:
+        service.fit("없는구", "2026-10", db=db)
+    except service.NotFound:
+        pass
+    else:
+        raise AssertionError
+
+
 def test_month_add():
     assert jobs.month_add("2025-01", -1) == "2024-12"
     assert jobs.month_add("2024-12", 1) == "2025-01"
