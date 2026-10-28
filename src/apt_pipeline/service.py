@@ -34,6 +34,10 @@ def _row(r):
     out = {"ym": r["ym"], "region": NAMES[r["region"]], "region_code": r["region"]}
     out.update({k: _clean(r.get(col)) for k, col in FIELDS.items()})
     out["n"] = int(out["n"]) if out["n"] is not None else None
+    # 몸통 log-normal의 중앙값 exp(μ) = 대표 평당가격(만원)
+    # (몸통 피팅이 발산한 달은 μ가 비정상적으로 커서 계산하지 않는다)
+    mu = out["mu"]
+    out["median_price"] = round(math.exp(mu)) if mu is not None and mu < 20 else None
     return out
 
 
@@ -60,6 +64,14 @@ def trend(region, start=None, end=None, db=None):
     if df.empty:
         raise NotFound(f"{NAMES[code]} 피팅 결과 없음")
     return [_row(r) for r in df.to_dict("records")]
+
+
+def months(region, db=None):
+    code = region_code(region)
+    df = (db or Database()).query("SELECT ym FROM fit_params WHERE region = ? ORDER BY ym", (code,))
+    if df.empty:
+        raise NotFound(f"{NAMES[code]} 피팅 결과 없음")
+    return df["ym"].tolist()
 
 
 def latest(db=None):

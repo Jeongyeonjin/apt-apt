@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>서울 아파트 가격 분포</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+  --surface: #fcfcfb;
+  --surface-2: #f1f2f4;
+  --ink: #172030;
+  --ink-2: #4f5866;
+  --ink-3: #7d8591;
+  --rule: #e2e4e8;
+  --body: #2a78d6;
+  --tail: #eb6834;
+  --body-fill: rgba(42, 120, 214, .16);
+  --tail-fill: rgba(235, 104, 52, .20);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface: #17191c;
+    --surface-2: #22252a;
+    --ink: #eef0f2;
+    --ink-2: #b4bac3;
+    --ink-3: #8a919b;
+    --rule: #2f333a;
+    --body: #3987e5;
+    --tail: #d95926;
+    --body-fill: rgba(57, 135, 229, .22);
+    --tail-fill: rgba(217, 89, 38, .26);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #17191c; --surface-2: #22252a; --ink: #eef0f2; --ink-2: #b4bac3; --ink-3: #8a919b;
+  --rule: #2f333a; --body: #3987e5; --tail: #d95926;
+  --body-fill: rgba(57, 135, 229, .22); --tail-fill: rgba(217, 89, 38, .26);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 16px/1.6 "IBM Plex Sans KR", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  word-break: keep-all;
+}
+a { color: var(--body); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--body); outline-offset: 3px; border-radius: 2px; }
+
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+.top {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 0; border-bottom: 1px solid var(--rule);
+  font-size: 15px;
+}
+.top strong { font-weight: 600; }
+
+/* 제목 자체가 조회 조건 */
+.ask {
+  margin: 44px 0 0;
+  font-size: 40px; line-height: 1.3; font-weight: 700; letter-spacing: -0.02em;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px;
+}
+.pick { position: relative; display: inline-block; }
+.pick::after {
+  content: ""; position: absolute; right: 2px; top: 55%;
+  border: 7px solid transparent; border-top-color: var(--ink-3);
+  pointer-events: none;
+}
+.pick select {
+  appearance: none; -webkit-appearance: none;
+  font: inherit; letter-spacing: inherit; color: inherit;
+  background: transparent; border: 0; border-radius: 0;
+  border-bottom: 3px solid var(--body);
+  padding: 0 26px 0 0; margin: 0; cursor: pointer;
+}
+.pick select option, .pick select optgroup { font-size: 16px; font-weight: 400; color: var(--ink); background: var(--surface); }
+.month { display: inline-flex; align-items: center; gap: 8px; }
+.step {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid var(--rule); background: transparent; color: var(--ink-2);
+  font-family: inherit; font-size: 20px; line-height: 1; cursor: pointer;
+}
+.step:hover:not(:disabled) { border-color: var(--ink-3); color: var(--ink); }
+.step:disabled { opacity: .35; cursor: default; }
+.ask .rest { color: var(--ink-3); font-weight: 600; }
+
+.summary { margin: 14px 0 0; max-width: 60ch; font-size: 19px; color: var(--ink-2); }
+.summary b { color: var(--ink); font-weight: 600; }
+
+.dist { margin: 26px 0 0; }
+.dist svg { display: block; width: 100%; overflow: visible; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+.legend span::before {
+  content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+  margin-right: 7px; vertical-align: -1px; background: var(--c);
+}
+
+.metrics {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  margin-top: 36px; border-top: 1px solid var(--rule);
+}
+.metric { padding: 18px 20px 4px 0; }
+.metric + .metric { padding-left: 20px; border-left: 1px solid var(--rule); }
+.metric h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.metric .v { margin-top: 2px; font-size: 30px; font-weight: 600; letter-spacing: -0.01em; }
+.metric .d { font-size: 14px; color: var(--ink-2); min-height: 22px; }
+.metric p { margin: 6px 0 0; font-size: 14px; line-height: 1.55; color: var(--ink-3); }
+
+.section { margin-top: 56px; }
+.section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+.section h2 { margin: 0; font-size: 21px; font-weight: 600; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 8px; padding: 2px; }
+.seg button {
+  border: 0; background: transparent; color: var(--ink-2); cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 500; line-height: 1; padding: 8px 12px; border-radius: 6px;
+}
+.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--ink); }
+.hint { margin: 6px 0 0; font-size: 14px; color: var(--ink-3); }
+.multiples { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 18px; }
+.multiples h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.multiples svg { display: block; width: 100%; overflow: visible; cursor: pointer; }
+
+.call-url {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 12px;
+}
+code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 14px; }
+.call-url code { background: var(--surface-2); padding: 8px 12px; border-radius: 6px; }
+details { margin-top: 12px; }
+summary { cursor: pointer; color: var(--ink-2); font-size: 15px; }
+pre { background: var(--surface-2); padding: 14px 16px; border-radius: 6px; overflow: auto; max-height: 360px; margin: 10px 0 0; font-size: 13px; line-height: 1.5; }
+
+footer { margin: 64px 0 40px; padding-top: 18px; border-top: 1px solid var(--rule); font-size: 14px; color: var(--ink-3); }
+footer p { margin: 0 0 4px; }
+
+.tip {
+  position: fixed; z-index: 10; pointer-events: none;
+  background: var(--ink); color: var(--surface);
+  font-size: 13px; line-height: 1.45; padding: 7px 10px; border-radius: 6px;
+  max-width: 240px; white-space: nowrap;
+}
+.tip b { font-weight: 600; }
+.error { margin-top: 20px; padding: 14px 16px; border-radius: 6px; background: var(--surface-2); color: var(--ink); }
+
+svg text { font-family: inherit; }
+.halo { paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; }
+.axis text { fill: var(--ink-3); font-size: 12px; }
+.grid line { stroke: var(--rule); }
+.baseline { stroke: var(--ink-3); }
+
+@media (max-width: 760px) {
+  .wrap { padding: 0 16px; }
+  .ask { font-size: 27px; margin-top: 30px; }
+  .step { width: 30px; height: 30px; }
+  .summary { font-size: 17px; }
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .metric:nth-child(3) { padding-left: 0; border-left: 0; }
+  .metric:nth-child(n+3) { border-top: 1px solid var(--rule); margin-top: 14px; }
+  .multiples { grid-template-columns: 1fr; gap: 22px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <strong>서울 아파트 평당가격 분포</strong>
+    <a href="/docs">API 문서</a>
+  </header>
+
+  <main>
+    <h1 class="ask">
+      <span class="pick"><select id="region" aria-label="지역"></select></span>
+      <span class="month">
+        <button class="step" id="prev" type="button" aria-label="이전 달">‹</button>
+        <span class="pick"><select id="month" aria-label="월"></select></span>
+        <button class="step" id="next" type="button" aria-label="다음 달">›</button>
+      </span>
+    </h1>
+    <p class="summary" id="summary">불러오는 중…</p>
+
+    <figure class="dist" style="margin-left:0;margin-right:0">
+      <svg id="dist" role="img" aria-label="평당가격 분포 피팅 곡선"></svg>
+      <figcaption class="legend">
+        <span style="--c: var(--body)">하위 95%: log-normal (최대우도)</span>
+        <span style="--c: var(--tail)">상위 5%: power-law (히스토그램 최소제곱)</span>
+      </figcaption>
+    </figure>
+
+    <section class="metrics" id="metrics" aria-label="지표"></section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>월별 추이</h2>
+        <div class="seg" role="group" aria-label="기간">
+          <button type="button" data-range="recent" aria-pressed="true">2024년 이후</button>
+          <button type="button" data-range="all" aria-pressed="false">전체 기간</button>
+        </div>
+      </div>
+      <p class="hint">그래프를 누르면 그달로 이동해요.</p>
+      <div class="multiples" id="multiples"></div>
+    </section>
+
+    <section class="section">
+      <h2>이 화면이 불러온 API</h2>
+      <div class="call-url">
+        <code id="call-url">GET /fit/…</code>
+        <a id="call-open" href="#" target="_blank" rel="noopener">새 탭에서 열기</a>
+      </div>
+      <details>
+        <summary>응답 JSON 보기</summary>
+        <pre id="call-json"></pre>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    <p>데이터: 국토교통부 아파트 매매 실거래가 (공공데이터포털). Airflow가 매일 06:00에 수집하고 다시 피팅합니다.</p>
+    <p>단지별 월평균 평당가격(만원)을 95번째 백분위수에서 나눠 하위는 log-normal, 상위는 power-law로 맞췄습니다.
+      <a href="https://github.com/Jeongyeonjin/apt-apt" target="_blank" rel="noopener">GitHub</a></p>
+  </footer>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const NS = "http://www.w3.org/2000/svg";
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const state = { region: "서울", trend: [], months: [], ym: null, fit: null, range: "recent", axis: null, shown: null };
+
+/* ---------- 형식 ---------- */
+const ymLabel = ym => `${ym.slice(0, 4)}년 ${+ym.slice(5)}월`;
+const won = v => {
+  v = Math.round(v);
+  if (v < 10000) return `${v.toLocaleString()}만원`;
+  const eok = Math.floor(v / 10000), rest = v % 10000;
+  return rest ? `${eok}억 ${rest.toLocaleString()}만원` : `${eok}억원`;
+};
+const wonTick = v => v === 0 ? "0" : v >= 10000 ? `${+(v / 10000).toFixed(1)}억` : `${(v / 1000).toFixed(0)}천`;
+const pct = p => p < 0.01 ? `${(p * 100).toFixed(1)}%` : `${Math.round(p * 100)}%`;
+const ymIndex = ym => (+ym.slice(0, 4)) * 12 + (+ym.slice(5)) - 1;
+const shiftYm = (ym, k) => { const i = ymIndex(ym) + k; return `${Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, "0")}`; };
+
+/* ---------- 분포 모형 (API 파라미터로 곡선 복원) ---------- */
+function erf(x) {
+  const s = Math.sign(x); x = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * x);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return s * y;
+}
+const Phi = z => 0.5 * (1 + erf(z / Math.SQRT2));
+const unstable = p => p && p.mu != null && p.tail_start != null && p.mu > Math.log(p.tail_start);
+function model(p) {
+  if (!p || p.sigma == null || p.mu == null || p.tail_start == null || unstable(p)) return null;
+  const { mu, sigma, tail_start: xm } = p;
+  const alpha = p.alpha;
+  const Fc = Phi((Math.log(xm) - mu) / sigma);
+  const hasTail = alpha != null && alpha > 1;
+  return {
+    xm, hasTail, median: Math.exp(mu),
+    body: x => x <= 0 ? 0 : 0.95 * Math.exp(-((Math.log(x) - mu) ** 2) / (2 * sigma * sigma)) / (x * sigma * Math.sqrt(2 * Math.PI)) / Fc,
+    tail: x => hasTail ? 0.05 * (alpha - 1) / xm * Math.pow(x / xm, -alpha) : 0,
+    // 이 가격보다 비싼 단지 비율
+    above: x => x < xm ? 0.05 + 0.95 * (1 - Phi((Math.log(Math.max(x, 1)) - mu) / sigma) / Fc)
+                       : hasTail ? 0.05 * Math.pow(x / xm, 1 - alpha) : null,
+  };
+}
+// 지역 안에서는 축을 고정해 달을 바꿔도 곡선 위치를 비교할 수 있게 한다
+function regionAxis(rows) {
+  const ts = rows.map(r => r.tail_start).filter(v => v).sort((a, b) => a - b);
+  let xMax = ts.length ? ts[Math.floor((ts.length - 1) * 0.9)] * 1.7 : 20000;
+  const step = xMax > 30000 ? 10000 : 5000;
+  return { xMax: Math.ceil(xMax / step) * step };
+}
+
+/* ---------- SVG 도우미 ---------- */
+function el(tag, attrs = {}, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text != null) e.textContent = text;
+  return e;
+}
+function niceTicks(lo, hi, n) {
+  const span = hi - lo || 1, raw = span / n, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map(s => s * mag).find(s => span / s <= n) || 10 * mag;
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+const measureCtx = document.createElement("canvas").getContext("2d");
+function textWidth(s, px, weight = 500) {
+  measureCtx.font = `${weight} ${px}px "IBM Plex Sans KR", system-ui, sans-serif`;
+  return measureCtx.measureText(s).width;
+}
+const tip = $("#tip");
+function showTip(evt, html) {
+  tip.innerHTML = html; tip.hidden = false;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = evt.clientX + 14, y = evt.clientY - h - 12;
+  if (x + w > innerWidth - 8) x = evt.clientX - w - 14;
+  if (y < 8) y = evt.clientY + 16;
+  tip.style.left = `${x}px`; tip.style.top = `${y}px`;
+}
+const hideTip = () => { tip.hidden = true; };
+
+/* ---------- 분포 곡선 ---------- */
+function drawDist(p) {
+  const svg = $("#dist");
+  const W = svg.parentNode.clientWidth, H = W < 560 ? 220 : 280;
+  const m = { l: 2, r: 2, t: 48, b: 30 }, iw = W - m.l - m.r;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H);
+  svg.replaceChildren();
+  const { xMax } = state.axis;
+  const X = v => m.l + Math.min(v, xMax) / xMax * iw;
+  const md = model(p);
+
+  // 기준선 라벨: 겹치면 아래 줄로 내린다 (좁은 화면 대비)
+  const marks = md ? [
+    { v: md.median, name: "대표 평당가격", value: `약 ${won(md.median)}`, color: "var(--ink-2)", dash: "4 4", side: "end" },
+    { v: md.xm, name: "상위 5% 시작", value: won(md.xm), color: "var(--tail)", dash: null, side: "start" },
+  ] : [];
+  const used = [];
+  for (const mk of marks) {
+    mk.x = X(mk.v);
+    const w = Math.max(textWidth(mk.name, 13), textWidth(mk.value, 15, 600));
+    if (mk.side === "end" && mk.x - w - 8 < 0) mk.side = "start";
+    if (mk.side === "start" && mk.x + w + 8 > W) mk.side = "end";
+    const x0 = mk.side === "end" ? mk.x - 8 - w : mk.x + 8, x1 = x0 + w;
+    mk.row = 0;
+    while ((used[mk.row] || []).some(([a, b]) => x0 < b + 12 && x1 > a - 12)) mk.row++;
+    (used[mk.row] ||= []).push([x0, x1]);
+  }
+  m.t = 10 + 40 * Math.max(1, used.length);
+  const ih = H - m.t - m.b;
+  let yMax = 1e-4;
+  if (md) {
+    for (let i = 1; i <= 200; i++) yMax = Math.max(yMax, md.body(md.xm * i / 200));
+    yMax = Math.max(yMax, md.tail(md.xm)) / 0.88;
+  }
+  const Y = v => m.t + ih - Math.min(v, yMax) / yMax * ih;
+
+  const axis = el("g", { class: "axis" });
+  for (const t of niceTicks(0, xMax, W < 560 ? 4 : 6)) {
+    axis.append(el("text", { x: X(t), y: H - 8, "text-anchor": t === 0 ? "start" : t >= xMax ? "end" : "middle" }, wonTick(t)));
+  }
+  svg.append(axis, el("line", { class: "baseline", x1: m.l, x2: W - m.r, y1: m.t + ih, y2: m.t + ih }));
+
+  if (!md) {
+    svg.append(el("text", { x: W / 2, y: m.t + ih / 2, "text-anchor": "middle", fill: "var(--ink-3)", "font-size": 15 },
+      unstable(p) ? "이 달은 하위 95% 피팅이 안정적이지 않아 곡선을 그리지 않았어요" : "이 달은 분포를 계산하지 않았어요"));
+    return;
+  }
+  const line = (f, a, b, n) => {
+    const pts = [];
+    for (let i = 0; i <= n; i++) { const x = a + (b - a) * i / n; pts.push([X(x), Y(f(x))]); }
+    return pts;
+  };
+  const toPath = pts => "M" + pts.map(q => q[0].toFixed(1) + "," + q[1].toFixed(1)).join("L");
+  const area = (pts, a, b) => toPath(pts) + `L${X(b).toFixed(1)},${Y(0)}L${X(a).toFixed(1)},${Y(0)}Z`;
+
+  const bodyPts = line(md.body, md.xm / 400, md.xm, 200);
+  svg.append(el("path", { d: area(bodyPts, md.xm / 400, md.xm), fill: "var(--body-fill)" }),
+             el("path", { d: toPath(bodyPts), fill: "none", stroke: "var(--body)", "stroke-width": 2, "stroke-linejoin": "round" }));
+  if (md.hasTail) {
+    const tailPts = line(md.tail, md.xm, xMax, 140);
+    svg.append(el("path", { d: area(tailPts, md.xm, xMax), fill: "var(--tail-fill)" }),
+               el("path", { d: toPath(tailPts), fill: "none", stroke: "var(--tail)", "stroke-width": 2 }));
+  } else {
+    const msg = "꼬리는 단지 30곳 미만이라 계산 안 함";
+    if (W - X(md.xm) > textWidth(msg, 13) + 16)
+      svg.append(el("text", { x: X(md.xm) + 8, y: m.t + ih - 10, fill: "var(--ink-3)", "font-size": 13 }, msg));
+  }
+
+  // 기준선 두 개: 대표 평당가격, 상위 5% 시작 (선을 먼저, 라벨은 위에)
+  for (const mk of marks) {
+    svg.append(el("line", { x1: mk.x, x2: mk.x, y1: 10 + 40 * mk.row, y2: m.t + ih, stroke: mk.color, "stroke-width": 1.5, ...(mk.dash ? { "stroke-dasharray": mk.dash } : {}) }));
+  }
+  for (const mk of marks) {
+    const tx = mk.side === "end" ? mk.x - 8 : mk.x + 8, top = 10 + 40 * mk.row;
+    svg.append(el("text", { class: "halo", x: tx, y: top + 12, "text-anchor": mk.side, fill: "var(--ink-3)", "font-size": 13 }, mk.name),
+               el("text", { class: "halo", x: tx, y: top + 31, "text-anchor": mk.side, fill: "var(--ink)", "font-size": 15, "font-weight": 600 }, mk.value));
+  }
+
+  // 마우스를 올리면 그 가격보다 비싼 단지 비율
+  const cross = el("line", { y1: m.t, y2: m.t + ih, stroke: "var(--ink-3)", "stroke-width": 1, visibility: "hidden" });
+  const hit = el("rect", { x: m.l, y: m.t, width: iw, height: ih, fill: "transparent" });
+  svg.append(cross, hit);
+  hit.addEventListener("pointermove", e => {
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) * W / r.width;
+    const v = Math.max(1, (px - m.l) / iw * xMax);
+    cross.setAttribute("x1", px); cross.setAttribute("x2", px); cross.setAttribute("visibility", "visible");
+    const a = md.above(v);
+    showTip(e, `평당 <b>${won(v)}</b><br>` + (a == null ? "상위 5% 구간" : `이보다 비싼 단지 약 <b>${pct(a)}</b>`));
+  });
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
+}
+
+// 달을 바꾸면 이전 곡선에서 새 곡선으로 모양이 바뀌는 과정을 보여준다
+function animateDist(from, to) {
+  const keys = ["mu", "sigma", "tail_start", "alpha"];
+  const ok = from && to && !unstable(from) && !unstable(to) && keys.every(k => from[k] != null && to[k] != null);
+  if (!ok || reduceMotion) { drawDist(to); state.shown = to; return; }
+  const t0 = performance.now(), dur = 380;
+  const frame = now => {
+    const t = Math.min(1, (now - t0) / dur), e = 1 - (1 - t) ** 3;
+    const p = { ...to };
+    for (const k of keys) p[k] = from[k] + (to[k] - from[k]) * e;
+    drawDist(p);
+    if (t < 1) requestAnimationFrame(frame); else state.shown = to;
+  };
+  requestAnimationFrame(frame);
+}
+
+/* ---------- 요약 문장, 지표 ---------- */
+function renderSummary(f) {
+  const s = $("#summary");
+  if (f.sigma == null) {
+    s.innerHTML = `이 달은 거래된 단지가 <b>${f.n ?? 0}곳</b>뿐이라 분포를 계산하지 않았어요. 다른 달을 골라 보세요.`;
+    return;
+  }
+  if (unstable(f)) {
+    s.innerHTML = `이 달은 단지 <b>${f.n}곳</b>의 가격이 한쪽으로 몰려 있어 하위 95% log-normal 피팅이 안정적이지 않았어요. ` +
+                  `상위 5%는 <b>${won(f.tail_start)}</b>부터 시작해요.`;
+    return;
+  }
+  s.innerHTML = `단지 <b>${f.n.toLocaleString()}곳</b> 중 절반은 평당 <b>약 ${won(f.median_price)}</b> 아래이고, ` +
+                `상위 5%는 <b>${won(f.tail_start)}</b>부터 시작해요.`;
+}
+function renderMetrics(f) {
+  const prev = state.trend.find(r => r.ym === shiftYm(f.ym, -12));
+  const delta = (k, digits) => {
+    if (f[k] == null) return "";
+    if (!prev || prev[k] == null || (k === "sigma" && unstable(prev))) return "1년 전 자료 없음";
+    const d = f[k] - prev[k];
+    if (Math.abs(d) < 10 ** -digits / 2) return `1년 전과 같음 (${prev[k].toFixed(digits)})`;
+    return `1년 전 ${prev[k].toFixed(digits)}보다 ${Math.abs(d).toFixed(digits)} ${d > 0 ? "높음" : "낮음"}`;
+  };
+  let tailNote = "상위 5% power-law 기울기예요. 작을수록 초고가 단지가 많아요.";
+  if (f.alpha == null) tailNote = f.sigma == null ? "" : "상위 5% 단지가 30곳 미만이라 계산하지 않았어요.";
+  else if (f.lr_p != null && f.lr_p < 0.1) tailNote += f.lr_r > 0 ? " 이 달 꼬리는 power-law에 더 가까워요." : " 이 달 꼬리는 log-normal에 더 가까워요.";
+  const items = [
+    unstable(f) ? { name: "가격 퍼짐 σ", v: null, d: "", p: "이 달은 피팅이 안정적이지 않아 보여주지 않아요." }
+                : { name: "가격 퍼짐 σ", v: f.sigma?.toFixed(3), d: delta("sigma", 3), p: "하위 95% log-normal의 σ예요. 클수록 단지 간 가격 차이가 커요." },
+    { name: "지니계수", v: f.gini?.toFixed(3), d: delta("gini", 3), p: "0이면 모든 단지 가격이 같고, 1에 가까울수록 불평등해요." },
+    { name: "꼬리 지수 α", v: f.alpha?.toFixed(2), d: delta("alpha", 2), p: tailNote },
+    { name: "분석한 단지", v: f.n != null ? `${f.n.toLocaleString()}곳` : null, d: "", p: "그달 거래된 단지마다 평균 평당가격을 하나씩 썼어요." },
+  ];
+  $("#metrics").replaceChildren(...items.map(it => {
+    const div = document.createElement("div"); div.className = "metric";
+    div.innerHTML = `<h3>${it.name}</h3><div class="v">${it.v ?? "–"}</div><div class="d">${it.d}</div><p>${it.p}</p>`;
+    return div;
+  }));
+}
+function renderCall(f) {
+  const path = `/fit/${encodeURIComponent(state.region)}/${f.ym}`;
+  $("#call-url").textContent = `GET /fit/${state.region}/${f.ym}`;
+  $("#call-open").href = path;
+  $("#call-json").textContent = JSON.stringify(f, null, 2);
+}
+
+/* ---------- 월별 추이 (지표마다 따로, 축 하나씩) ---------- */
+const SERIES = [
+  { key: "sigma", name: "가격 퍼짐 σ", fmt: v => v.toFixed(3) },
+  { key: "gini", name: "지니계수", fmt: v => v.toFixed(3) },
+  { key: "alpha", name: "꼬리 지수 α", fmt: v => v.toFixed(2) },
+];
+function drawMultiples() {
+  const host = $("#multiples");
+  host.replaceChildren();
+  const rows = state.range === "recent" ? state.trend.filter(r => r.ym >= "2024-01") : state.trend;
+  if (!rows.length) return;
+  const i0 = ymIndex(rows[0].ym), i1 = ymIndex(rows[rows.length - 1].ym);
+  for (const s of SERIES) {
+    const fig = document.createElement("figure"); fig.style.margin = 0;
+    fig.innerHTML = `<h3>${s.name}</h3>`;
+    const svg = el("svg", { role: "img", "aria-label": `${s.name} 월별 추이` });
+    fig.append(svg); host.append(fig);
+    const W = fig.clientWidth || 300, H = 150, m = { l: 40, r: 8, t: 10, b: 24 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H);
+    const val = r => (s.key === "sigma" && unstable(r)) ? null : r[s.key];
+    const vals = rows.map(val).filter(v => v != null);
+    if (!vals.length) {
+      svg.append(el("text", { x: W / 2, y: H / 2, "text-anchor": "middle", fill: "var(--ink-3)", "font-size": 13 }, "계산된 달이 없어요"));
+      continue;
+    }
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    const pad = (hi - lo) * 0.15 || Math.abs(hi) * 0.05 || 0.01; lo -= pad; hi += pad;
+    const X = ym => m.l + (i1 === i0 ? iw / 2 : (ymIndex(ym) - i0) / (i1 - i0) * iw);
+    const Y = v => m.t + ih - (v - lo) / (hi - lo) * ih;
+
+    const grid = el("g", { class: "grid" }), axis = el("g", { class: "axis" });
+    for (const t of niceTicks(lo, hi, 3)) {
+      grid.append(el("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t) }));
+      axis.append(el("text", { x: m.l - 8, y: Y(t) + 4, "text-anchor": "end" }, +t.toFixed(3)));
+    }
+    const years = [];
+    for (let y = Math.ceil(i0 / 12); y * 12 <= i1; y++) years.push(y);
+    const every = Math.max(1, Math.ceil(years.length / Math.max(2, Math.floor(iw / 48))));
+    years.forEach((y, k) => {
+      if (k % every) return;
+      const x = X(`${y}-01`);
+      axis.append(el("text", { x, y: H - 6, "text-anchor": "middle" }, y));
+    });
+    svg.append(grid, axis);
+
+    // 1년 넘게 빈 구간은 이름을 붙여 둔다
+    for (let k = 1; k < rows.length; k++) {
+      const gap = ymIndex(rows[k].ym) - ymIndex(rows[k - 1].ym);
+      if (gap > 12) {
+        const xa = X(rows[k - 1].ym), xb = X(rows[k].ym);
+        if (xb - xa > 70) svg.append(el("text", { x: (xa + xb) / 2, y: m.t + ih / 2, "text-anchor": "middle", fill: "var(--ink-3)", "font-size": 12 }, "수집 안 한 기간"));
+      }
+    }
+
+    // 값이 없거나 달이 끊기면 선을 끊는다
+    let seg = [];
+    const flush = () => {
+      if (seg.length > 1) svg.append(el("path", { d: "M" + seg.map(q => q.join(",")).join("L"), fill: "none", stroke: "var(--body)", "stroke-width": 2, "stroke-linejoin": "round" }));
+      else if (seg.length === 1) svg.append(el("circle", { cx: seg[0][0], cy: seg[0][1], r: 2.5, fill: "var(--body)" }));
+      seg = [];
+    };
+    rows.forEach((r, k) => {
+      const v = val(r);
+      if (v == null || (k && ymIndex(r.ym) - ymIndex(rows[k - 1].ym) > 1)) flush();
+      if (v != null) seg.push([X(r.ym).toFixed(1), Y(v).toFixed(1)]);
+    });
+    flush();
+
+    const sel = rows.find(r => r.ym === state.ym);
+    if (sel) {
+      svg.append(el("line", { x1: X(sel.ym), x2: X(sel.ym), y1: m.t, y2: m.t + ih, stroke: "var(--ink-3)", "stroke-width": 1 }));
+      if (val(sel) != null) svg.append(el("circle", { cx: X(sel.ym), cy: Y(val(sel)), r: 5, fill: "var(--body)", stroke: "var(--surface)", "stroke-width": 2 }));
+    }
+
+    const cross = el("line", { y1: m.t, y2: m.t + ih, stroke: "var(--ink-3)", "stroke-width": 1, "stroke-dasharray": "3 3", visibility: "hidden" });
+    const hit = el("rect", { x: m.l - 6, y: 0, width: iw + 12, height: H, fill: "transparent" });
+    svg.append(cross, hit);
+    const nearest = e => {
+      const r = svg.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width;
+      let best = rows[0];
+      for (const row of rows) if (Math.abs(X(row.ym) - px) < Math.abs(X(best.ym) - px)) best = row;
+      return best;
+    };
+    hit.addEventListener("pointermove", e => {
+      const row = nearest(e), x = X(row.ym);
+      cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.setAttribute("visibility", "visible");
+      const v = val(row);
+      showTip(e, `${ymLabel(row.ym)}<br>${s.name} <b>${v == null ? "계산 안 함" : s.fmt(v)}</b>`);
+    });
+    hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(); });
+    hit.addEventListener("click", e => { hideTip(); selectMonth(nearest(e).ym); });
+  }
+}
+
+/* ---------- 선택 컨트롤 ---------- */
+function fitSelect(sel) {
+  const cs = getComputedStyle(sel);
+  measureCtx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const text = sel.options[sel.selectedIndex]?.text || "";
+  const ls = parseFloat(cs.letterSpacing) || 0;
+  sel.style.width = `${Math.ceil(measureCtx.measureText(text).width + ls * text.length + 38)}px`;
+}
+function fillMonths() {
+  const sel = $("#month");
+  sel.replaceChildren();
+  const byYear = {};
+  for (const ym of state.months) (byYear[ym.slice(0, 4)] ||= []).push(ym);
+  for (const y of Object.keys(byYear).sort().reverse()) {
+    const g = document.createElement("optgroup"); g.label = `${y}년`;
+    for (const ym of byYear[y].slice().reverse()) g.append(new Option(ymLabel(ym), ym));
+    sel.append(g);
+  }
+}
+function updateStepButtons() {
+  const i = state.months.indexOf(state.ym);
+  $("#prev").disabled = i <= 0;
+  $("#next").disabled = i < 0 || i >= state.months.length - 1;
+}
+
+async function api(path) {
+  const r = await fetch(path);
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+function showError(err) {
+  $("#summary").innerHTML = `<span class="error" style="display:block">API에서 데이터를 불러오지 못했어요: ${err.message}<br>` +
+    `Ubuntu에서 <code>docker compose ps</code>로 api, postgres가 켜져 있는지 확인해 주세요.</span>`;
+}
+
+async function selectMonth(ym) {
+  state.ym = ym;
+  $("#month").value = ym; fitSelect($("#month")); updateStepButtons();
+  history.replaceState(null, "", `?region=${encodeURIComponent(state.region)}&ym=${ym}`);
+  try {
+    const f = await api(`/fit/${encodeURIComponent(state.region)}/${ym}`);
+    if (state.ym !== ym) return;  // 그사이 다른 달을 골랐으면 버린다
+    state.fit = f;
+    renderSummary(f); renderMetrics(f); renderCall(f);
+    animateDist(state.shown, f);
+    drawMultiples();
+  } catch (err) { showError(err); }
+}
+
+async function selectRegion(region, wantYm) {
+  state.region = region;
+  $("#region").value = region; fitSelect($("#region"));
+  try {
+    state.trend = await api(`/trend/${encodeURIComponent(region)}`);
+  } catch (err) { showError(err); return; }
+  state.months = state.trend.map(r => r.ym);
+  state.axis = regionAxis(state.trend);
+  state.shown = null;  // 축이 바뀌므로 곡선은 새로 그린다
+  fillMonths();
+  const ym = state.months.includes(wantYm) ? wantYm : state.months[state.months.length - 1];
+  await selectMonth(ym);
+}
+
+async function init() {
+  const q = new URLSearchParams(location.search);
+  let regions;
+  try { regions = await api("/regions"); } catch (err) { showError(err); return; }
+  const sel = $("#region");
+  for (const r of regions) sel.append(new Option(r.code === "11000" ? "서울 전체" : r.name, r.code === "11000" ? "서울" : r.name));
+  sel.addEventListener("change", () => selectRegion(sel.value, state.ym));
+  $("#month").addEventListener("change", e => selectMonth(e.target.value));
+  $("#prev").addEventListener("click", () => selectMonth(state.months[state.months.indexOf(state.ym) - 1]));
+  $("#next").addEventListener("click", () => selectMonth(state.months[state.months.indexOf(state.ym) + 1]));
+  document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+    state.range = b.dataset.range;
+    document.querySelectorAll(".seg button").forEach(o => o.setAttribute("aria-pressed", o === b));
+    drawMultiples();
+  }));
+  let t;
+  addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => { if (state.fit) { drawDist(state.fit); drawMultiples(); } }, 120); });
+  document.fonts?.ready.then(() => { fitSelect($("#region")); fitSelect($("#month")); });
+  const want = q.get("region");
+  await selectRegion([...sel.options].some(o => o.value === want) ? want : "서울", q.get("ym"));
+}
+init();
+</script>
+</body>
+</html>

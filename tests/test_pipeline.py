@@ -198,6 +198,8 @@ def test_service_queries():
     assert service.fit("11000", "2026-09", db=db)["region"] == "서울 전체"
     assert len(service.trend("서울", start="2026-10", db=db)) == 1
     assert service.latest(db=db)["ym"] == "2026-10"
+    assert service.months("강남구", db=db) == ["2026-09", "2026-10"]
+    assert out["median_price"] == round(2980.96)
     try:
         service.fit("없는구", "2026-10", db=db)
     except service.NotFound:

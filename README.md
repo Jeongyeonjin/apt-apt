@@ -48,21 +48,27 @@ flowchart LR
 
 ## API (FastAPI)
 
-피팅 결과를 다른 서비스에서 가져다 쓸 수 있도록 REST API로 제공한다. 실행 후 http://localhost:8000/docs 에서 바로 호출해볼 수 있다.
+피팅 결과를 다른 서비스에서 가져다 쓸 수 있도록 REST API로 제공한다.
+
+- http://localhost:8000 : 지역과 월을 고르면 이 API를 불러 분포 곡선, 지표, 월별 추이를 보여주는 조회 화면
+- http://localhost:8000/docs : 엔드포인트를 바로 호출해볼 수 있는 API 문서 (응답 필드마다 한글 설명)
 
 | 엔드포인트 | 설명 |
 |---|---|
-| `GET /latest` | 서울 전체 최신 월 지표 |
-| `GET /fit/{region}/{ym}` | 지역·월별 지표 (`region`: `서울`, `강남구` 또는 코드 `11680`) |
+| `GET /fit/{region}/{ym}` | 지역·월별 지표 (`region`: `서울` 또는 구 이름, `ym`: `2026-10`) |
 | `GET /trend/{region}?start=YYYY-MM&end=YYYY-MM` | 월별 지표 추이 |
-| `GET /regions` | 조회 가능한 지역 목록 |
+| `GET /months/{region}` | 조회 가능한 월 목록 |
+| `GET /latest` | 서울 전체 최신 월 지표 |
+| `GET /regions` | 지역 목록 |
 | `GET /health` | 서버 상태 |
 
 ```json
 GET /fit/서울/2026-10
-{"ym": "2026-10", "region": "서울 전체", "n": 990, "sigma": 0.4519, "alpha": 3.262, "gini": 0.2858, ...}
+{"ym": "2026-10", "region": "서울 전체", "n": 1076, "median_price": 4236, "tail_start": 10435.33,
+ "sigma": 0.4583, "gini": 0.288, "alpha": 3.3341, ...}
 ```
 조회 로직은 `src/apt_pipeline/service.py`에 두고 API는 얇게 감싸기만 해서, FastAPI 없이도 테스트한다.
+조회 화면은 API가 돌려준 μ, σ, α, 상위 5% 경계로 곡선을 다시 그리고, 가격에 마우스를 올리면 그보다 비싼 단지 비율을 계산해 보여준다.
 
 ## 데이터
 
@@ -132,7 +138,7 @@ Docker Desktop 또는 WSL Ubuntu의 Docker Engine에서 실행한다.
 2. `.env.example`을 `.env`로 복사하고 키 입력 (`.env`는 Git에 올라가지 않음)
 3. (선택) 기존 CSV를 `legacy_data/`에 넣기
 4. `docker compose up -d --build`
-5. http://localhost:8080 (Airflow)에서 DAG 켜기 → http://localhost:8501 (대시보드), http://localhost:8000/docs (API)
+5. http://localhost:8080 (Airflow)에서 DAG 켜기 → http://localhost:8501 (대시보드), http://localhost:8000 (API 조회 화면)
 
 API 연결만 먼저 확인하려면: `docker compose run --rm airflow python -m apt_pipeline.check_api`
 
@@ -161,6 +167,7 @@ src/apt_pipeline/
   config.py             꼬리 비율, 구간 수 등 설정
 dashboard/app.py        Streamlit 대시보드
 api/main.py             FastAPI 지표 API
+api/static/index.html   API 조회 화면
 analysis/               검증용 시뮬레이션
 tests/                  테스트
 docs/                   README 이미지
