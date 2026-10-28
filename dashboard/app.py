@@ -150,8 +150,8 @@ if region != config.SEOUL:
                "단지별 평균 평당가격의 히스토그램만 보여줍니다.")
     k = st.columns(4)
     k[0].metric("거래된 단지 수", f"{len(x):,}")
-    k[1].metric("중앙값", f"{np.median(x):,.0f}만원/평" if len(x) else "-")
-    k[2].metric("상위 5% 경계", f"{np.percentile(x, config.TAIL_PCT):,.0f}만원/평" if len(x) else "-")
+    k[1].metric("중앙값 (만원/평)", f"{np.median(x):,.0f}" if len(x) else "-")
+    k[2].metric("상위 5% 경계 (만원/평)", f"{np.percentile(x, config.TAIL_PCT):,.0f}" if len(x) else "-")
     k[3].metric("지니계수", fmt(cur["gini"], 3))
     if len(x):
         w = nice_width(x.max() - x.min())
