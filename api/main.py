@@ -3,7 +3,8 @@
 실행: uvicorn main:app --host 0.0.0.0 --port 8000  (Docker Compose의 api 서비스)
 문서: http://localhost:8000/docs
 """
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Path, Query
+from fastapi.responses import RedirectResponse
 
 from apt_pipeline import service
 from apt_pipeline.db import Database
@@ -23,6 +24,21 @@ def _call(fn, *args, **kw):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+def _ex(*values):
+    """Swagger 문서에서 'Try it out'을 누르면 미리 채워질 예시값"""
+    return {v: {"value": v} for v in values}
+
+
+REGION = Path(description="'서울', '강남구' 또는 법정동 코드 5자리", openapi_examples={"서울": {"value": "서울"}, "강남구": {"value": "강남구"},
+                                "코드 (강남구)": {"value": "11680"}})
+YM = Path(description="YYYY-MM", openapi_examples=_ex("2026-10", "2025-12", "2024-01"))
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse("/docs")
+
+
 @app.get("/health", summary="서버 상태")
 def health():
     return {"status": "ok"}
@@ -39,13 +55,13 @@ def latest():
 
 
 @app.get("/fit/{region}/{ym}", summary="지역·월별 분포 지표")
-def fit(region: str, ym: str):
-    """region: '서울', '강남구' 또는 법정동 코드 5자리 / ym: 'YYYY-MM'"""
+def fit(region: str = REGION, ym: str = YM):
+    """구별 꼬리(상위 5%)는 단지 수가 30개 미만이면 α를 계산하지 않아 null로 나온다."""
     return _call(service.fit, region, ym)
 
 
 @app.get("/trend/{region}", summary="지역별 월별 지표 추이")
-def trend(region: str,
-          start: str | None = Query(None, description="시작 월 YYYY-MM"),
-          end: str | None = Query(None, description="끝 월 YYYY-MM")):
+def trend(region: str = REGION,
+          start: str | None = Query(None, description="시작 월 YYYY-MM", openapi_examples=_ex("2024-01")),
+          end: str | None = Query(None, description="끝 월 YYYY-MM", openapi_examples=_ex("2026-10"))):
     return _call(service.trend, region, start=start, end=end)
