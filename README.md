@@ -58,6 +58,7 @@ flowchart LR
 | `GET /fit/{region}/{ym}` | 지역·월별 지표 (`region`: `서울` 또는 구 이름, `ym`: `2026-10`) |
 | `GET /trend/{region}?start=YYYY-MM&end=YYYY-MM` | 월별 지표 추이 |
 | `GET /months/{region}` | 조회 가능한 월 목록 |
+| `GET /complexes/{region}/{ym}` | 피팅에 쓴 원자료 (단지별 평균 평당가격, 거래 건수) |
 | `GET /latest` | 서울 전체 최신 월 지표 |
 | `GET /regions` | 지역 목록 |
 | `GET /health` | 서버 상태 |

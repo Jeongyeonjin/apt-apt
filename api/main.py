@@ -71,6 +71,12 @@ def months(region: Region):
     return _call(service.months, region.value)
 
 
+@app.get("/complexes/{region}/{ym}", summary="피팅에 쓴 단지별 평균 평당가격 (원자료)")
+def complexes(region: Region, ym: str = YM):
+    """그달 거래된 단지마다 평균 평당가격(만원)과 거래 건수. 싼 순서."""
+    return _call(service.complexes, region.value, ym)
+
+
 @app.get("/latest", summary="서울 전체 최신 월 지표", response_model=Fit)
 def latest():
     return _call(service.latest)

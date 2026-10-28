@@ -74,6 +74,19 @@ def months(region, db=None):
     return df["ym"].tolist()
 
 
+def complexes(region, ym, db=None):
+    """피팅에 들어간 원자료: 그달 단지별 평균 평당가격 (싼 순)."""
+    code = region_code(region)
+    df = (db or Database()).month_complexes(ym)
+    if code != config.SEOUL and not df.empty:
+        df = df[df["sgg_cd"].astype(str) == code]
+    if df.empty:
+        raise NotFound(f"{NAMES[code]} {ym} 거래 없음")
+    df = df.sort_values("price_per_pyeong")
+    return [{"umd_nm": r.umd_nm, "apt_nm": r.apt_nm, "price_per_pyeong": round(float(r.price_per_pyeong), 1),
+             "n_deals": int(r.n_deals)} for r in df.itertuples()]
+
+
 def latest(db=None):
     df = (db or Database()).query("SELECT MAX(ym) AS ym FROM fit_params WHERE region = ?", (config.SEOUL,))
     ym = df["ym"].iloc[0]

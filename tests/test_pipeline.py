@@ -185,6 +185,9 @@ def test_complex_average_is_unit():
     c = db.month_complexes("2025-01")
     assert len(c) == 11                                        # 거래 40건 → 단지 11개
     assert c.loc[c.apt_nm == "일괄단지", "n_deals"].item() == 30
+    from apt_pipeline import service
+    rows = service.complexes("서울", "2025-01", db=db)
+    assert len(rows) == 11 and rows[0]["price_per_pyeong"] <= rows[-1]["price_per_pyeong"]
 
 
 def test_service_queries():
