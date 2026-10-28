@@ -6,7 +6,7 @@
 from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.responses import RedirectResponse
 
-from apt_pipeline import service
+from apt_pipeline import config, service
 from apt_pipeline.db import Database
 
 app = FastAPI(
@@ -29,8 +29,11 @@ def _ex(*values):
     return {v: {"value": v} for v in values}
 
 
-REGION = Path(description="'서울', '강남구' 또는 법정동 코드 5자리", openapi_examples={"서울": {"value": "서울"}, "강남구": {"value": "강남구"},
-                                "코드 (강남구)": {"value": "11680"}})
+# 서울 전체 + 25개 구를 모두 드롭다운에 보여준다 (코드 5자리도 직접 입력 가능)
+REGION_EXAMPLES = ({"서울 전체": {"value": "서울"}}
+                   | {name: {"value": name} for name in config.SEOUL_GU.values()}
+                   | {"코드로 조회 (강남구)": {"value": "11680"}})
+REGION = Path(description="'서울', '강남구' 또는 법정동 코드 5자리", openapi_examples=REGION_EXAMPLES)
 YM = Path(description="YYYY-MM", openapi_examples=_ex("2026-10", "2025-12", "2024-01"))
 
 
